@@ -1,8 +1,27 @@
-package com.example.gateway.filter;
+package com.example.gateway;
 
+import com.example.gateway.AdaptivePolicy;
+import com.example.gateway.AdaptivePolicyEngine;
+import com.example.gateway.ClientContext;
+import com.example.gateway.ClientContextExtractor;
+import com.example.gateway.RateLimitDecision;
+import com.example.gateway.RedisRateLimiterService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 @Component
 public class RateLimiterFilter implements GlobalFilter, Ordered {
@@ -34,13 +53,16 @@ public class RateLimiterFilter implements GlobalFilter, Ordered {
                     if (decision.allowed()) {
                         exchange.getResponse().getHeaders().add("X-RateLimit-Remaining", String.valueOf(decision.remainingTokens()));
                         exchange.getResponse().getHeaders().add("X-RateLimit-Policy", policy.reason());
+
                         log.info("ALLOW clientId={} ip={} path={} reason={} remaining={}",
                                 context.clientId(), context.ip(), context.path(), decision.reason(), decision.remainingTokens());
+
                         return chain.filter(exchange);
                     }
 
                     log.warn("BLOCK clientId={} ip={} path={} reason={} retryAfter={}",
                             context.clientId(), context.ip(), context.path(), decision.reason(), decision.retryAfterSeconds());
+
                     return write429(exchange, decision, context);
                 });
     }
